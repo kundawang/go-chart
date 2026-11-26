@@ -232,13 +232,13 @@ func (c Chart) getRanges() (xrange, yrange, yrangeAlt Range) {
 	}
 
 	if c.YAxis.Range == nil {
-		yrange = &ContinuousRange{}
+		yrange = c.newYRange(c.YAxis)
 	} else {
 		yrange = c.YAxis.Range
 	}
 
 	if c.YAxisSecondary.Range == nil {
-		yrangeAlt = &ContinuousRange{}
+		yrangeAlt = c.newYRange(c.YAxisSecondary)
 	} else {
 		yrangeAlt = c.YAxisSecondary.Range
 	}
@@ -276,6 +276,12 @@ func (c Chart) getRanges() (xrange, yrange, yrangeAlt Range) {
 			yrange.SetMin(rmin)
 			yrange.SetMax(rmax)
 		}
+
+		if c.YAxis.Range == nil && (c.YAxis.SymmetricLog || c.YAxis.SymLog) {
+			if sr, ok := yrange.(*SymmetricLogRange); ok {
+				sr.Symmetrize()
+			}
+		}
 	}
 
 	if len(c.YAxisSecondary.Ticks) > 0 {
@@ -297,9 +303,32 @@ func (c Chart) getRanges() (xrange, yrange, yrangeAlt Range) {
 			yrangeAlt.SetMin(rmin)
 			yrangeAlt.SetMax(rmax)
 		}
+
+		if c.YAxisSecondary.Range == nil && (c.YAxisSecondary.SymmetricLog || c.YAxisSecondary.SymLog) {
+			if sr, ok := yrangeAlt.(*SymmetricLogRange); ok {
+				sr.Symmetrize()
+			}
+		}
 	}
 
 	return
+}
+
+// newYRange builds the default Range for a Y axis, honoring the optional
+// symmetric-log opt-in. Without that opt-in it returns the same
+// ContinuousRange the chart has always used.
+func (c Chart) newYRange(ya YAxis) Range {
+	if ya.SymmetricLog || ya.SymLog {
+		threshold := ya.SymmetricLogThreshold
+		if threshold == 0 {
+			threshold = ya.SymLogThreshold
+		}
+		if threshold == 0 {
+			threshold = DefaultSymmetricLogThreshold
+		}
+		return &SymmetricLogRange{Threshold: threshold}
+	}
+	return &ContinuousRange{}
 }
 
 func (c Chart) checkRanges(xr, yr, yra Range) error {

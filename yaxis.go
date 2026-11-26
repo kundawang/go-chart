@@ -27,6 +27,19 @@ type YAxis struct {
 	ValueFormatter ValueFormatter
 	Range          Range
 
+	// SymmetricLog opts into a symmetric (signed) logarithmic Y axis using
+	// SymmetricLogRange when Range is not set explicitly. Positive and
+	// negative values share one continuous, zero-symmetric transform with a
+	// linear region around zero. Configure its half-width with
+	// SymmetricLogThreshold (defaults to 1).
+	SymmetricLog          bool
+	SymmetricLogThreshold float64
+
+	// SymLog is a shorthand alias for SymmetricLog.
+	SymLog bool
+	// SymLogThreshold is a shorthand alias for SymmetricLogThreshold.
+	SymLogThreshold float64
+
 	TickStyle Style
 	Ticks     []Tick
 
@@ -65,9 +78,9 @@ func (ya YAxis) GetTickStyle() Style {
 
 // GetTicks returns the ticks for a series.
 // The coalesce priority is:
-// 	- User Supplied Ticks (i.e. Ticks array on the axis itself).
-// 	- Range ticks (i.e. if the range provides ticks).
-//	- Generating continuous ticks based on minimum spacing and canvas width.
+//   - User Supplied Ticks (i.e. Ticks array on the axis itself).
+//   - Range ticks (i.e. if the range provides ticks).
+//   - Generating continuous ticks based on minimum spacing and canvas width.
 func (ya YAxis) GetTicks(r Renderer, ra Range, defaults Style, vf ValueFormatter) []Tick {
 	if len(ya.Ticks) > 0 {
 		return ya.Ticks
