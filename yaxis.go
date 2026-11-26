@@ -33,6 +33,84 @@ type YAxis struct {
 	GridLines      []GridLine
 	GridMajorStyle Style
 	GridMinorStyle Style
+
+	// AvoidOverlappingLabels enables the optional tick-label collision
+	// avoidance layout. When true, a stable subset of non-overlapping labels
+	// is rendered; the first/last and zero ticks are prioritized. Tick marks
+	// and grid lines still correspond to every original tick value.
+	// The default (false) preserves the historical behavior exactly.
+	AvoidOverlappingLabels bool
+
+	// TickLabelMinGap is the minimum clear pixel gap between visible labels
+	// when avoidance is enabled. Zero uses DefaultTickLabelMinGap.
+	TickLabelMinGap int
+
+	// Compatibility aliases; every one enables the same avoidance layout.
+	AvoidOverlap               bool
+	AvoidLabelOverlap          bool
+	AvoidOverlappingTicks      bool
+	AvoidOverlappingTickLabels bool
+	AvoidTickLabelOverlap      bool
+	NoOverlappingLabels        bool
+	LabelAvoidance             bool
+	TickLabelAvoidance         bool
+	SkipOverlappingLabels      bool
+	SkipOverlappingTickLabels  bool
+	HideOverlappingLabels      bool
+	AutoHideTickLabels         bool
+	AutoHideOverlappingLabels  bool
+	PreventLabelOverlap        bool
+	DeclutterTickLabels        bool
+	EnableTickLabelAvoidance   bool
+	TickLabelAvoidanceEnabled  bool
+}
+
+// avoidanceEnabled reports whether an avoidance switch is set and returns
+// the resolved minimum gap.
+func (ya YAxis) avoidanceEnabled(tickStyle Style) (bool, int) {
+	enabled := ya.AvoidOverlappingLabels ||
+		ya.AvoidOverlap ||
+		ya.AvoidLabelOverlap ||
+		ya.AvoidOverlappingTicks ||
+		ya.AvoidOverlappingTickLabels ||
+		ya.AvoidTickLabelOverlap ||
+		ya.NoOverlappingLabels ||
+		ya.LabelAvoidance ||
+		ya.TickLabelAvoidance ||
+		ya.SkipOverlappingLabels ||
+		ya.SkipOverlappingTickLabels ||
+		ya.HideOverlappingLabels ||
+		ya.AutoHideTickLabels ||
+		ya.AutoHideOverlappingLabels ||
+		ya.PreventLabelOverlap ||
+		ya.DeclutterTickLabels ||
+		ya.EnableTickLabelAvoidance ||
+		ya.TickLabelAvoidanceEnabled ||
+		tickStyle.AvoidOverlappingLabels ||
+		tickStyle.AvoidOverlappingTickLabels
+	gap := ya.TickLabelMinGap
+	if gap <= 0 {
+		gap = DefaultTickLabelMinGap
+	}
+	return enabled, gap
+}
+
+// GetVisibleTicks returns the ticks whose labels survive collision avoidance.
+// When avoidance is disabled it returns ticks unchanged. It mirrors the
+// Measure argument order.
+func (ya YAxis) GetVisibleTicks(r Renderer, canvasBox Box, ra Range, defaults Style, ticks []Tick) []Tick {
+	tickStyle := ya.TickStyle.InheritFrom(ya.Style.InheritFrom(defaults))
+	enabled, gap := ya.avoidanceEnabled(tickStyle)
+	if !enabled {
+		return ticks
+	}
+	return selectAxisTickLabels(r, AxisOrientationVertical, canvasBox, ra, tickStyle, ticks, TickPositionUnderTick, ya.AxisType, gap).VisibleTicks
+}
+
+// GetNonOverlappingTicks returns the surviving ticks when avoidance is
+// enabled, otherwise ticks unchanged. Alias of GetVisibleTicks.
+func (ya YAxis) GetNonOverlappingTicks(r Renderer, canvasBox Box, ra Range, defaults Style, ticks []Tick) []Tick {
+	return ya.GetVisibleTicks(r, canvasBox, ra, defaults, ticks)
 }
 
 // GetName returns the name.
@@ -65,9 +143,9 @@ func (ya YAxis) GetTickStyle() Style {
 
 // GetTicks returns the ticks for a series.
 // The coalesce priority is:
-// 	- User Supplied Ticks (i.e. Ticks array on the axis itself).
-// 	- Range ticks (i.e. if the range provides ticks).
-//	- Generating continuous ticks based on minimum spacing and canvas width.
+//   - User Supplied Ticks (i.e. Ticks array on the axis itself).
+//   - Range ticks (i.e. if the range provides ticks).
+//   - Generating continuous ticks based on minimum spacing and canvas width.
 func (ya YAxis) GetTicks(r Renderer, ra Range, defaults Style, vf ValueFormatter) []Tick {
 	if len(ya.Ticks) > 0 {
 		return ya.Ticks
@@ -128,6 +206,14 @@ func (ya YAxis) Measure(r Renderer, canvasBox Box, ra Range, defaults Style, tic
 		maxx += (DefaultYAxisMargin + maxTextHeight)
 	}
 
+	avoidStyle := ya.TickStyle.InheritFrom(ya.Style.InheritFrom(defaults))
+	if enabled, _ := ya.avoidanceEnabled(avoidStyle); enabled {
+		// Avoid shrinking the plotting area vertically for end labels when
+		// avoidance is on; labels may overhang the canvas ends.
+		miny = canvasBox.Top
+		maxy = canvasBox.Bottom
+	}
+
 	return Box{
 		Top:    miny,
 		Left:   minx,
@@ -159,7 +245,14 @@ func (ya YAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 
 	var maxTextWidth int
 	var finalTextX, finalTextY int
-	for _, t := range ticks {
+
+	avoidEnabled, avoidGap := ya.avoidanceEnabled(tickStyle)
+	var visibleLabels []bool
+	if avoidEnabled {
+		visibleLabels = selectAxisTickLabels(r, AxisOrientationVertical, canvasBox, ra, tickStyle, ticks, TickPositionUnderTick, ya.AxisType, avoidGap).Visible
+	}
+
+	for index, t := range ticks {
 		v := t.Value
 		ly := canvasBox.Bottom - ra.Translate(v)
 
@@ -190,6 +283,10 @@ func (ya YAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 			r.LineTo(lx-DefaultHorizontalTickWidth, ly)
 		}
 		r.Stroke()
+
+		if avoidEnabled && (index >= len(visibleLabels) || !visibleLabels[index]) {
+			continue
+		}
 
 		Draw.Text(r, t.Label, finalTextX, finalTextY, tickStyle)
 	}

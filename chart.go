@@ -34,6 +34,23 @@ type Chart struct {
 	Elements []Renderable
 
 	Log Logger
+
+	// AvoidOverlappingLabels optionally enables tick-label collision
+	// avoidance on every axis. These top-level aliases all enable the same
+	// layout; per-axis fields take precedence only in that any set switch
+	// enables the behavior for that axis.
+	AvoidOverlappingLabels     bool
+	AvoidOverlappingTickLabels bool
+	AvoidOverlap               bool
+	AvoidLabelOverlap          bool
+	AvoidOverlappingTicks      bool
+	NoOverlappingLabels        bool
+	LabelAvoidance             bool
+	TickLabelAvoidance         bool
+	SkipOverlappingLabels      bool
+	HideOverlappingLabels      bool
+	AutoHideTickLabels         bool
+	PreventLabelOverlap        bool
 }
 
 // GetDPI returns the dpi for the chart.
@@ -81,6 +98,14 @@ func (c Chart) Render(rp RendererProvider, w io.Writer) error {
 	}
 
 	c.YAxisSecondary.AxisType = YAxisSecondary
+
+	// Propagate top-level avoidance switches onto the axes before measurement
+	// so Measure and Render agree on the resulting canvas geometry.
+	if c.tickLabelAvoidanceChartEnabled() {
+		c.XAxis.AvoidOverlappingLabels = true
+		c.YAxis.AvoidOverlappingLabels = true
+		c.YAxisSecondary.AvoidOverlappingLabels = true
+	}
 
 	r, err := rp(c.GetWidth(), c.GetHeight())
 	if err != nil {
@@ -470,6 +495,21 @@ func (c Chart) getCanvasStyle() Style {
 
 func (c Chart) drawCanvas(r Renderer, canvasBox Box) {
 	Draw.Box(r, canvasBox, c.getCanvasStyle())
+}
+
+func (c Chart) tickLabelAvoidanceChartEnabled() bool {
+	return c.AvoidOverlappingLabels ||
+		c.AvoidOverlappingTickLabels ||
+		c.AvoidOverlap ||
+		c.AvoidLabelOverlap ||
+		c.AvoidOverlappingTicks ||
+		c.NoOverlappingLabels ||
+		c.LabelAvoidance ||
+		c.TickLabelAvoidance ||
+		c.SkipOverlappingLabels ||
+		c.HideOverlappingLabels ||
+		c.AutoHideTickLabels ||
+		c.PreventLabelOverlap
 }
 
 func (c Chart) drawAxes(r Renderer, canvasBox Box, xrange, yrange, yrangeAlt Range, xticks, yticks, yticksAlt []Tick) {

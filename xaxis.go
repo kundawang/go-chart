@@ -27,6 +27,84 @@ type XAxis struct {
 	GridLines      []GridLine
 	GridMajorStyle Style
 	GridMinorStyle Style
+
+	// AvoidOverlappingLabels enables the optional tick-label collision
+	// avoidance layout. When true, a stable subset of non-overlapping labels
+	// is rendered; the first/last and zero ticks are prioritized. Tick marks
+	// and grid lines still correspond to every original tick value.
+	// The default (false) preserves the historical behavior exactly.
+	AvoidOverlappingLabels bool
+
+	// TickLabelMinGap is the minimum clear pixel gap between visible labels
+	// when avoidance is enabled. Zero uses DefaultTickLabelMinGap.
+	TickLabelMinGap int
+
+	// Compatibility aliases; every one enables the same avoidance layout.
+	AvoidOverlap               bool
+	AvoidLabelOverlap          bool
+	AvoidOverlappingTicks      bool
+	AvoidOverlappingTickLabels bool
+	AvoidTickLabelOverlap      bool
+	NoOverlappingLabels        bool
+	LabelAvoidance             bool
+	TickLabelAvoidance         bool
+	SkipOverlappingLabels      bool
+	SkipOverlappingTickLabels  bool
+	HideOverlappingLabels      bool
+	AutoHideTickLabels         bool
+	AutoHideOverlappingLabels  bool
+	PreventLabelOverlap        bool
+	DeclutterTickLabels        bool
+	EnableTickLabelAvoidance   bool
+	TickLabelAvoidanceEnabled  bool
+}
+
+// avoidanceEnabled reports whether an avoidance switch is set and returns
+// the resolved minimum gap.
+func (xa XAxis) avoidanceEnabled(tickStyle Style) (bool, int) {
+	enabled := xa.AvoidOverlappingLabels ||
+		xa.AvoidOverlap ||
+		xa.AvoidLabelOverlap ||
+		xa.AvoidOverlappingTicks ||
+		xa.AvoidOverlappingTickLabels ||
+		xa.AvoidTickLabelOverlap ||
+		xa.NoOverlappingLabels ||
+		xa.LabelAvoidance ||
+		xa.TickLabelAvoidance ||
+		xa.SkipOverlappingLabels ||
+		xa.SkipOverlappingTickLabels ||
+		xa.HideOverlappingLabels ||
+		xa.AutoHideTickLabels ||
+		xa.AutoHideOverlappingLabels ||
+		xa.PreventLabelOverlap ||
+		xa.DeclutterTickLabels ||
+		xa.EnableTickLabelAvoidance ||
+		xa.TickLabelAvoidanceEnabled ||
+		tickStyle.AvoidOverlappingLabels ||
+		tickStyle.AvoidOverlappingTickLabels
+	gap := xa.TickLabelMinGap
+	if gap <= 0 {
+		gap = DefaultTickLabelMinGap
+	}
+	return enabled, gap
+}
+
+// GetVisibleTicks returns the ticks whose labels survive collision avoidance.
+// When avoidance is disabled it returns ticks unchanged. It mirrors the
+// Measure argument order.
+func (xa XAxis) GetVisibleTicks(r Renderer, canvasBox Box, ra Range, defaults Style, ticks []Tick) []Tick {
+	tickStyle := xa.TickStyle.InheritFrom(xa.Style.InheritFrom(defaults))
+	enabled, gap := xa.avoidanceEnabled(tickStyle)
+	if !enabled {
+		return ticks
+	}
+	return selectAxisTickLabels(r, AxisOrientationHorizontal, canvasBox, ra, tickStyle, ticks, xa.GetTickPosition(), YAxisPrimary, gap).VisibleTicks
+}
+
+// GetNonOverlappingTicks returns the surviving ticks when avoidance is
+// enabled, otherwise ticks unchanged. Alias of GetVisibleTicks.
+func (xa XAxis) GetNonOverlappingTicks(r Renderer, canvasBox Box, ra Range, defaults Style, ticks []Tick) []Tick {
+	return xa.GetVisibleTicks(r, canvasBox, ra, defaults, ticks)
 }
 
 // GetName returns the name.
@@ -60,9 +138,9 @@ func (xa XAxis) GetTickPosition(defaults ...TickPosition) TickPosition {
 
 // GetTicks returns the ticks for a series.
 // The coalesce priority is:
-// 	- User Supplied Ticks (i.e. Ticks array on the axis itself).
-// 	- Range ticks (i.e. if the range provides ticks).
-//	- Generating continuous ticks based on minimum spacing and canvas width.
+//   - User Supplied Ticks (i.e. Ticks array on the axis itself).
+//   - Range ticks (i.e. if the range provides ticks).
+//   - Generating continuous ticks based on minimum spacing and canvas width.
 func (xa XAxis) GetTicks(r Renderer, ra Range, defaults Style, vf ValueFormatter) []Tick {
 	if len(xa.Ticks) > 0 {
 		return xa.Ticks
@@ -120,6 +198,16 @@ func (xa XAxis) Measure(r Renderer, canvasBox Box, ra Range, defaults Style, tic
 		bottom += DefaultXAxisMargin + tb.Height()
 	}
 
+	if enabled, _ := xa.avoidanceEnabled(tickStyle); enabled {
+		// With label avoidance on, along-axis label overhang must not shrink
+		// the plotting area (otherwise narrow canvases compress the axis so
+		// far that even the preserved end labels overlap). Labels are allowed
+		// to overhang the chart edge instead. Perpendicular extent (bottom)
+		// is still reported above.
+		left = canvasBox.Left
+		right = canvasBox.Right
+	}
+
 	return Box{
 		Top:    canvasBox.Bottom,
 		Left:   left,
@@ -139,6 +227,15 @@ func (xa XAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 
 	tp := xa.GetTickPosition()
 
+	avoidEnabled, avoidGap := xa.avoidanceEnabled(tickStyle)
+	var visibleLabels []bool
+	if avoidEnabled {
+		visibleLabels = selectAxisTickLabels(r, AxisOrientationHorizontal, canvasBox, ra, tickStyle, ticks, tp, YAxisPrimary, avoidGap).Visible
+	}
+	drawLabel := func(index int) bool {
+		return !avoidEnabled || (index < len(visibleLabels) && visibleLabels[index])
+	}
+
 	var tx, ty int
 	var maxTextHeight int
 	for index, t := range ticks {
@@ -157,6 +254,10 @@ func (xa XAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 
 		switch tp {
 		case TickPositionUnderTick, TickPositionUnset:
+			maxTextHeight = MaxInt(maxTextHeight, tb.Height())
+			if !drawLabel(index) {
+				break
+			}
 			if tickStyle.TextRotationDegrees == 0 {
 				tx = tx - tb.Width()>>1
 				ty = canvasBox.Bottom + DefaultXAxisMargin + tb.Height()
@@ -164,7 +265,6 @@ func (xa XAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 				ty = canvasBox.Bottom + (2 * DefaultXAxisMargin)
 			}
 			Draw.Text(r, t.Label, tx, ty, tickWithAxisStyle)
-			maxTextHeight = MaxInt(maxTextHeight, tb.Height())
 			break
 		case TickPositionBetweenTicks:
 			if index > 0 {
@@ -172,12 +272,14 @@ func (xa XAxis) Render(r Renderer, canvasBox Box, ra Range, defaults Style, tick
 				ltx := canvasBox.Left + llx
 				finalTickStyle := tickWithAxisStyle.InheritFrom(Style{TextHorizontalAlign: TextHorizontalAlignCenter})
 
-				Draw.TextWithin(r, t.Label, Box{
-					Left:   ltx,
-					Right:  tx,
-					Top:    canvasBox.Bottom + DefaultXAxisMargin,
-					Bottom: canvasBox.Bottom + DefaultXAxisMargin,
-				}, finalTickStyle)
+				if drawLabel(index) {
+					Draw.TextWithin(r, t.Label, Box{
+						Left:   ltx,
+						Right:  tx,
+						Top:    canvasBox.Bottom + DefaultXAxisMargin,
+						Bottom: canvasBox.Bottom + DefaultXAxisMargin,
+					}, finalTickStyle)
+				}
 
 				ftb := Text.MeasureLines(r, Text.WrapFit(r, t.Label, tx-ltx, finalTickStyle), finalTickStyle)
 				maxTextHeight = MaxInt(maxTextHeight, ftb.Height())

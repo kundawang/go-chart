@@ -69,6 +69,12 @@ type Style struct {
 	TextWrap            TextWrap
 	TextLineSpacing     int
 	TextRotationDegrees float64 //0 is unset or normal
+
+	// AvoidOverlappingLabels / AvoidOverlappingTickLabels optionally enable
+	// tick-label collision avoidance when set on an axis tick style. The
+	// zero value (false) leaves label rendering unchanged.
+	AvoidOverlappingLabels     bool
+	AvoidOverlappingTickLabels bool
 }
 
 // IsZero returns if the object is set or not.
@@ -405,6 +411,9 @@ func (s Style) InheritFrom(defaults Style) (final Style) {
 	final.TextWrap = s.GetTextWrap(defaults.TextWrap)
 	final.TextLineSpacing = s.GetTextLineSpacing(defaults.TextLineSpacing)
 	final.TextRotationDegrees = s.GetTextRotationDegrees(defaults.TextRotationDegrees)
+
+	final.AvoidOverlappingLabels = s.AvoidOverlappingLabels || defaults.AvoidOverlappingLabels
+	final.AvoidOverlappingTickLabels = s.AvoidOverlappingTickLabels || defaults.AvoidOverlappingTickLabels
 
 	return
 }

@@ -78,6 +78,27 @@ Explanation of the above: A `chart` can have many `Series`, a `Series` is a coll
 
 Here, we have a single series with x range values as float64s, rendered to a PNG. Note; we can pass any type of `io.Writer` into `Render(...)`, meaning that we can render the chart to a file or a resonse or anything else that implements `io.Writer`.
 
+# Tick Label Collision Avoidance
+
+On narrow canvases long date labels overlap. Set `AvoidOverlappingLabels: true` on an axis (or on the `Chart`) to keep a stable, pairwise non-overlapping label subset chosen from real font measurements and the axis projection:
+
+```golang
+graph := chart.Chart{
+    Width: 120,
+    XAxis: chart.XAxis{
+        Ticks:                   sixLongDateTicks,
+        AvoidOverlappingLabels:  true,
+        // TickLabelMinGap: chart.DefaultTickLabelMinGap, // optional
+    },
+    YAxis:   chart.YAxis{AvoidOverlappingLabels: true}, // dense y labels too
+    Series:  []chart.Series{ /* ... */ },
+}
+```
+
+The first and last ticks and the zero tick are prioritized. Tick marks and grid lines are still drawn for every original tick value; only label text is thinned. Horizontal, vertical and rotated labels are measured with their rotated bounding boxes, and the selection is identical for SVG and PNG. A wide axis keeps every label. The zero value leaves all historical behavior, ticks and canvas sizing unchanged.
+
+Lower level helpers are also exported: `chart.ComputeTickLabelLayout(...)`, `chart.SelectNonOverlappingBoxes(...)`, `XAxis.GetVisibleTicks(...)` and `YAxis.GetVisibleTicks(...)`.
+
 # API Overview
 
 Everything on the `chart.Chart` object has defaults that can be overriden. Whenever a developer sets a property on the chart object, it is to be assumed that value will be used instead of the default.
