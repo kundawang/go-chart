@@ -252,6 +252,13 @@ func (c Chart) getRanges() (xrange, yrange, yrangeAlt Range) {
 		xrange.SetMin(tickMin)
 		xrange.SetMax(tickMax)
 	} else if xrange.IsZero() {
+		// A lone stacked-area point is a valid degenerate stack; give its X
+		// domain unit width so range checks pass. This only activates for the
+		// new stacked area series; all existing series keep their behavior.
+		if minx == maxx && c.hasStackedAreaSeries() {
+			minx -= 0.5
+			maxx += 0.5
+		}
 		xrange.SetMin(minx)
 		xrange.SetMax(maxx)
 	}
@@ -426,6 +433,19 @@ func (c Chart) hasAnnotationSeries() bool {
 func (c Chart) hasSecondarySeries() bool {
 	for _, s := range c.Series {
 		if s.GetYAxis() == YAxisSecondary {
+			return true
+		}
+	}
+	return false
+}
+
+// hasStackedAreaSeries reports whether the chart contains a positive/negative
+// separated stacked area series (value or pointer). It is used to give a
+// single-point stack a non-zero auto X domain without affecting other charts.
+func (c Chart) hasStackedAreaSeries() bool {
+	for _, s := range c.Series {
+		switch s.(type) {
+		case StackedAreaSeries, *StackedAreaSeries:
 			return true
 		}
 	}

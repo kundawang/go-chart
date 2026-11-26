@@ -35,12 +35,21 @@ func Legend(c *Chart, userDefaults ...Style) Renderable {
 		var labels []string
 		var lines []Style
 		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
+			if s.GetStyle().Hidden {
+				continue
 			}
+			if _, isAnnotationSeries := s.(AnnotationSeries); isAnnotationSeries {
+				continue
+			}
+			if lep, expands := s.(LegendEntriesProvider); expands {
+				for _, entry := range lep.LegendEntries(c.styleDefaultsSeries(index)) {
+					labels = append(labels, entry.Name)
+					lines = append(lines, entry.Style.InheritFrom(c.styleDefaultsSeries(index)))
+				}
+				continue
+			}
+			labels = append(labels, s.GetName())
+			lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
 		}
 
 		legend := Box{
@@ -149,12 +158,21 @@ func LegendThin(c *Chart, userDefaults ...Style) Renderable {
 		var labels []string
 		var lines []Style
 		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
+			if s.GetStyle().Hidden {
+				continue
 			}
+			if _, isAnnotationSeries := s.(AnnotationSeries); isAnnotationSeries {
+				continue
+			}
+			if lep, expands := s.(LegendEntriesProvider); expands {
+				for _, entry := range lep.LegendEntries(c.styleDefaultsSeries(index)) {
+					labels = append(labels, entry.Name)
+					lines = append(lines, entry.Style.InheritFrom(c.styleDefaultsSeries(index)))
+				}
+				continue
+			}
+			labels = append(labels, s.GetName())
+			lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
 		}
 
 		var textHeight int
@@ -247,12 +265,21 @@ func LegendLeft(c *Chart, userDefaults ...Style) Renderable {
 		var labels []string
 		var lines []Style
 		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
+			if s.GetStyle().Hidden {
+				continue
 			}
+			if _, isAnnotationSeries := s.(AnnotationSeries); isAnnotationSeries {
+				continue
+			}
+			if lep, expands := s.(LegendEntriesProvider); expands {
+				for _, entry := range lep.LegendEntries(c.styleDefaultsSeries(index)) {
+					labels = append(labels, entry.Name)
+					lines = append(lines, entry.Style.InheritFrom(c.styleDefaultsSeries(index)))
+				}
+				continue
+			}
+			labels = append(labels, s.GetName())
+			lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
 		}
 
 		legend := Box{

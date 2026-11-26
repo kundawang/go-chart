@@ -44,6 +44,34 @@ Stacked Bar:
 
 The code for this chart can be found in `examples/stacked_bar/main.go`.
 
+Positive / Negative Separated Stacked Area:
+
+`chart.StackedAreaSeries` accumulates positive and negative components
+independently on a shared, increasing X grid. Positives stack upward from the
+zero line and negatives stack downward, so a `+2` and a `-1` at the same point
+produce cumulative boundaries `2` and `-1` (they never cancel into `1`). Each
+layer's upper and lower boundaries and the band between them are drawn, the Y
+axis spans the cumulative extrema, and the standard legend expands to one
+entry per layer. The same configuration renders to SVG or PNG.
+
+```go
+graph := chart.Chart{
+    Series: []chart.Series{
+        chart.StackedAreaSeries{
+            XValues: []float64{0, 1},
+            Series: []chart.StackedAreaSeries{
+                {Name: "render", YValues: []float64{2, 1}},
+                {Name: "script", YValues: []float64{-1, 3}},
+            },
+        },
+    },
+}
+```
+
+`ComputeStackedArea` provides the same accumulation without rendering. The
+code for a full frame-time example can be found in
+`examples/stacked_area/main.go`.
+
 # Code Examples
 
 Actual chart configurations and examples can be found in the `./examples/` directory. They are simple CLI programs that write to `output.png` (they are also updated with `go generate`.
