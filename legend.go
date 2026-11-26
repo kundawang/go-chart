@@ -4,6 +4,51 @@ import (
 	"github.com/wcharczuk/go-chart/v2/drawing"
 )
 
+// legendSeries collects the information needed to render one legend row.
+type legendSeries struct {
+	label string
+	style Style
+	ohlc  OHLCLegendProvider
+}
+
+// collectLegendSeries returns the visible, non-annotation series rendered
+// in a legend along with their effective style.
+func collectLegendSeries(c *Chart) []legendSeries {
+	var output []legendSeries
+	for index, s := range c.Series {
+		if s.GetStyle().Hidden {
+			continue
+		}
+		if _, isAnnotationSeries := s.(AnnotationSeries); isAnnotationSeries {
+			continue
+		}
+		entry := legendSeries{
+			label: s.GetName(),
+			style: s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)),
+		}
+		if lp, isOHLC := s.(OHLCLegendProvider); isOHLC {
+			entry.ohlc = lp
+		}
+		output = append(output, entry)
+	}
+	return output
+}
+
+// drawLegendSwatch draws either a candle swatch or a plain line for a
+// legend row between (lx, ly) and (lx+width, ly).
+func drawLegendSwatch(r Renderer, entry legendSeries, lx, ly, width int) {
+	if entry.ohlc != nil {
+		Draw.OHLCLegendSwatch(r, entry.ohlc.GetUpColor(), entry.ohlc.GetDownColor(), lx, ly, width)
+		return
+	}
+	r.SetStrokeColor(entry.style.GetStrokeColor())
+	r.SetStrokeWidth(entry.style.GetStrokeWidth())
+	r.SetStrokeDashArray(entry.style.GetStrokeDashArray())
+	r.MoveTo(lx, ly)
+	r.LineTo(lx+width, ly)
+	r.Stroke()
+}
+
 // Legend returns a legend renderable function.
 func Legend(c *Chart, userDefaults ...Style) Renderable {
 	return func(r Renderer, cb Box, chartDefaults Style) {
@@ -32,16 +77,7 @@ func Legend(c *Chart, userDefaults ...Style) Renderable {
 		lineTextGap := 5
 		lineLengthMinimum := 25
 
-		var labels []string
-		var lines []Style
-		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
-			}
-		}
+		entries := collectLegendSeries(c)
 
 		legend := Box{
 			Top:  cb.Top,
@@ -60,9 +96,9 @@ func Legend(c *Chart, userDefaults ...Style) Renderable {
 
 		// measure
 		labelCount := 0
-		for x := 0; x < len(labels); x++ {
-			if len(labels[x]) > 0 {
-				tb := r.MeasureText(labels[x])
+		for x := 0; x < len(entries); x++ {
+			if len(entries[x].label) > 0 {
+				tb := r.MeasureText(entries[x].label)
 				if labelCount > 0 {
 					legendContent.Bottom += DefaultMinimumTickVerticalSpacing
 				}
@@ -85,8 +121,8 @@ func Legend(c *Chart, userDefaults ...Style) Renderable {
 		tx := legendContent.Left
 		legendCount := 0
 		var label string
-		for x := 0; x < len(labels); x++ {
-			label = labels[x]
+		for x := 0; x < len(entries); x++ {
+			label = entries[x].label
 			if len(label) > 0 {
 				if legendCount > 0 {
 					ycursor += DefaultMinimumTickVerticalSpacing
@@ -103,13 +139,7 @@ func Legend(c *Chart, userDefaults ...Style) Renderable {
 				ly := ty - th2
 				lx2 := legendContent.Right - legendPadding.Right
 
-				r.SetStrokeColor(lines[x].GetStrokeColor())
-				r.SetStrokeWidth(lines[x].GetStrokeWidth())
-				r.SetStrokeDashArray(lines[x].GetStrokeDashArray())
-
-				r.MoveTo(lx, ly)
-				r.LineTo(lx2, ly)
-				r.Stroke()
+				drawLegendSwatch(r, entries[x], lx, ly, lx2-lx)
 
 				ycursor += tb.Height()
 				legendCount++
@@ -146,23 +176,14 @@ func LegendThin(c *Chart, userDefaults ...Style) Renderable {
 		r.SetFontColor(legendStyle.GetFontColor())
 		r.SetFontSize(legendStyle.GetFontSize())
 
-		var labels []string
-		var lines []Style
-		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
-			}
-		}
+		entries := collectLegendSeries(c)
 
 		var textHeight int
 		var textWidth int
 		var textBox Box
-		for x := 0; x < len(labels); x++ {
-			if len(labels[x]) > 0 {
-				textBox = r.MeasureText(labels[x])
+		for x := 0; x < len(entries); x++ {
+			if len(entries[x].label) > 0 {
+				textBox = r.MeasureText(entries[x].label)
 				textHeight = MaxInt(textBox.Height(), textHeight)
 				textWidth = MaxInt(textBox.Width(), textWidth)
 			}
@@ -193,8 +214,8 @@ func LegendThin(c *Chart, userDefaults ...Style) Renderable {
 		var label string
 		var lx, ly int
 		th2 := textHeight >> 1
-		for index := range labels {
-			label = labels[index]
+		for index := range entries {
+			label = entries[index].label
 			if len(label) > 0 {
 				textBox = r.MeasureText(label)
 				r.Text(label, tx, ty)
@@ -202,13 +223,7 @@ func LegendThin(c *Chart, userDefaults ...Style) Renderable {
 				lx = tx + textBox.Width() + lineTextGap
 				ly = ty - th2
 
-				r.SetStrokeColor(lines[index].GetStrokeColor())
-				r.SetStrokeWidth(lines[index].GetStrokeWidth())
-				r.SetStrokeDashArray(lines[index].GetStrokeDashArray())
-
-				r.MoveTo(lx, ly)
-				r.LineTo(lx+lineLengthMinimum, ly)
-				r.Stroke()
+				drawLegendSwatch(r, entries[index], lx, ly, lineLengthMinimum)
 
 				tx += textBox.Width() + DefaultMinimumTickHorizontalSpacing + lineTextGap + lineLengthMinimum
 			}
@@ -244,16 +259,7 @@ func LegendLeft(c *Chart, userDefaults ...Style) Renderable {
 		lineTextGap := 5
 		lineLengthMinimum := 25
 
-		var labels []string
-		var lines []Style
-		for index, s := range c.Series {
-			if !s.GetStyle().Hidden {
-				if _, isAnnotationSeries := s.(AnnotationSeries); !isAnnotationSeries {
-					labels = append(labels, s.GetName())
-					lines = append(lines, s.GetStyle().InheritFrom(c.styleDefaultsSeries(index)))
-				}
-			}
-		}
+		entries := collectLegendSeries(c)
 
 		legend := Box{
 			Top:  5,
@@ -272,9 +278,9 @@ func LegendLeft(c *Chart, userDefaults ...Style) Renderable {
 
 		// measure
 		labelCount := 0
-		for x := 0; x < len(labels); x++ {
-			if len(labels[x]) > 0 {
-				tb := r.MeasureText(labels[x])
+		for x := 0; x < len(entries); x++ {
+			if len(entries[x].label) > 0 {
+				tb := r.MeasureText(entries[x].label)
 				if labelCount > 0 {
 					legendContent.Bottom += DefaultMinimumTickVerticalSpacing
 				}
@@ -297,8 +303,8 @@ func LegendLeft(c *Chart, userDefaults ...Style) Renderable {
 		tx := legendContent.Left
 		legendCount := 0
 		var label string
-		for x := 0; x < len(labels); x++ {
-			label = labels[x]
+		for x := 0; x < len(entries); x++ {
+			label = entries[x].label
 			if len(label) > 0 {
 				if legendCount > 0 {
 					ycursor += DefaultMinimumTickVerticalSpacing
@@ -315,13 +321,7 @@ func LegendLeft(c *Chart, userDefaults ...Style) Renderable {
 				ly := ty - th2
 				lx2 := legendContent.Right - legendPadding.Right
 
-				r.SetStrokeColor(lines[x].GetStrokeColor())
-				r.SetStrokeWidth(lines[x].GetStrokeWidth())
-				r.SetStrokeDashArray(lines[x].GetStrokeDashArray())
-
-				r.MoveTo(lx, ly)
-				r.LineTo(lx2, ly)
-				r.Stroke()
+				drawLegendSwatch(r, entries[x], lx, ly, lx2-lx)
 
 				ycursor += tb.Height()
 				legendCount++

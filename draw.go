@@ -2,6 +2,8 @@ package chart
 
 import (
 	"math"
+
+	"github.com/wcharczuk/go-chart/v2/drawing"
 )
 
 var (
@@ -132,6 +134,184 @@ func (d draw) BoundedSeries(r Renderer, canvasBox Box, xrange, yrange Range, sty
 	}
 	r.Close()
 	r.FillStroke()
+}
+
+// ohlcCandleColorer is implemented by OHLC series that color their
+// candles according to the direction of the period.
+type ohlcCandleColorer interface {
+	CandleColor(index int) drawing.Color
+}
+
+// OHLCSeries draws an open/high/low/close series as candlesticks.
+//
+// Each candle consists of a vertical wick spanning the high-low range and
+// a body spanning the open-close range. Candles where the open equals the
+// close (doji) render as a horizontal line at that value.
+//
+// When candleWidth is zero the body width is derived from the pixel
+// distance to the nearest neighboring point, so non-uniform spacing on the
+// x axis yields proportionally sized bodies. A single, neighborless candle
+// falls back to a fraction of the canvas width.
+func (d draw) OHLCSeries(r Renderer, canvasBox Box, xrange, yrange Range, style Style, vs OHLCValuesProvider, candleWidths ...int) {
+	if vs.Len() == 0 {
+		return
+	}
+
+	explicitWidth := 0
+	if len(candleWidths) > 0 {
+		explicitWidth = candleWidths[0]
+	}
+	autoWidth := explicitWidth <= 0
+
+	colorer, hasColors := vs.(ohlcCandleColorer)
+
+	cb := canvasBox.Bottom
+	cl := canvasBox.Left
+
+	// A single point produces a zero-delta range, which Translate maps to
+	// NaN. Center such degenerate candles in the canvas instead so a
+	// one-point series still renders a recognizable candle.
+	degenerateX := xrange.GetDelta() == 0
+	degenerateY := yrange.GetDelta() == 0
+	midX := canvasBox.Left + (canvasBox.Width() >> 1)
+	midY := canvasBox.Top + (canvasBox.Height() >> 1)
+
+	// precompute the pixel x coordinate of every point so neighbor
+	// distances are measured in the same space the bodies are drawn in.
+	px := make([]int, vs.Len())
+	for i := 0; i < vs.Len(); i++ {
+		vx, _, _, _, _ := vs.GetOHLCValues(i)
+		if degenerateX {
+			px[i] = midX
+		} else {
+			px[i] = cl + xrange.Translate(vx)
+		}
+	}
+
+	singleWidth := MaxInt(MinimumCandleWidth, int(math.Floor(float64(canvasBox.Width())*DefaultSingleCandleWidthRatio)))
+
+	for index := 0; index < vs.Len(); index++ {
+		_, open, high, low, close := vs.GetOHLCValues(index)
+
+		width := explicitWidth
+		if autoWidth {
+			width = singleWidth
+			if vs.Len() > 1 {
+				gap := math.MaxFloat64
+				if index > 0 {
+					gap = math.Min(gap, math.Abs(float64(px[index]-px[index-1])))
+				}
+				if index < vs.Len()-1 {
+					gap = math.Min(gap, math.Abs(float64(px[index+1]-px[index])))
+				}
+				width = MaxInt(MinimumCandleWidth, int(math.Floor(gap*DefaultCandleWidthRatio)))
+			}
+		}
+		halfWidth := width >> 1
+
+		x := px[index]
+		var highY, lowY, openY, closeY int
+		if degenerateY {
+			highY = midY
+			lowY = midY
+			openY = midY
+			closeY = midY
+		} else {
+			highY = cb - yrange.Translate(high)
+			lowY = cb - yrange.Translate(low)
+			openY = cb - yrange.Translate(open)
+			closeY = cb - yrange.Translate(close)
+		}
+
+		// edge candles are centered on the boundary data point, so clamp
+		// every pixel coordinate to the canvas to keep wicks, bodies and
+		// ticks from spilling into the axis area.
+		highY = MinInt(canvasBox.Bottom, MaxInt(canvasBox.Top, highY))
+		lowY = MinInt(canvasBox.Bottom, MaxInt(canvasBox.Top, lowY))
+		openY = MinInt(canvasBox.Bottom, MaxInt(canvasBox.Top, openY))
+		closeY = MinInt(canvasBox.Bottom, MaxInt(canvasBox.Top, closeY))
+		bodyLeft := MaxInt(canvasBox.Left, x-halfWidth)
+		bodyRight := MinInt(canvasBox.Right, x+halfWidth)
+
+		color := style.GetStrokeColor()
+		if hasColors {
+			color = colorer.CandleColor(index)
+		}
+
+		// wick: vertical line from the low to the high.
+		r.SetStrokeColor(color)
+		r.SetStrokeWidth(style.GetStrokeWidth(DefaultSeriesLineWidth))
+		r.SetStrokeDashArray(nil)
+		r.MoveTo(x, highY)
+		r.LineTo(x, lowY)
+		r.Stroke()
+
+		if open == close {
+			// doji: no body, draw a horizontal tick instead.
+			r.MoveTo(bodyLeft, openY)
+			r.LineTo(bodyRight, openY)
+			r.Stroke()
+			continue
+		}
+
+		body := Box{
+			Top:    MinInt(openY, closeY),
+			Left:   bodyLeft,
+			Right:  bodyRight,
+			Bottom: MaxInt(openY, closeY),
+		}
+		r.SetFillColor(color)
+		d.Box(r, body, Style{
+			StrokeColor: color,
+			StrokeWidth: style.GetStrokeWidth(DefaultSeriesLineWidth),
+			FillColor:   color,
+		})
+	}
+}
+
+// OHLCLegendSwatch draws a small candlestick swatch for use in legends
+// between (lx, ly) and (lx+swatchWidth, ly), centered vertically on ly.
+func (d draw) OHLCLegendSwatch(r Renderer, upColor, downColor drawing.Color, lx, ly, swatchWidth int) {
+	halfHeight := 4
+	quarterWidth := swatchWidth >> 2
+	midX := lx + (swatchWidth >> 1)
+
+	// up candle on the left half.
+	r.SetStrokeColor(upColor)
+	r.SetStrokeWidth(DefaultSeriesLineWidth)
+	r.MoveTo(lx+quarterWidth, ly-halfHeight-1)
+	r.LineTo(lx+quarterWidth, ly+halfHeight+1)
+	r.Stroke()
+
+	r.SetFillColor(upColor)
+	d.Box(r, Box{
+		Top:    ly - halfHeight,
+		Left:   lx,
+		Right:  lx + (swatchWidth >> 1),
+		Bottom: ly,
+	}, Style{
+		StrokeColor: upColor,
+		StrokeWidth: DefaultSeriesLineWidth,
+		FillColor:   upColor,
+	})
+
+	// down candle on the right half.
+	r.SetStrokeColor(downColor)
+	r.MoveTo(midX+quarterWidth, ly-halfHeight-1)
+	r.LineTo(midX+quarterWidth, ly+halfHeight+1)
+	r.Stroke()
+
+	r.SetFillColor(downColor)
+	d.Box(r, Box{
+		Top:    ly,
+		Left:   midX,
+		Right:  lx + swatchWidth,
+		Bottom: ly + halfHeight,
+	}, Style{
+		StrokeColor: downColor,
+		StrokeWidth: DefaultSeriesLineWidth,
+		FillColor:   downColor,
+	})
 }
 
 // HistogramSeries draws a value provider as boxes from 0.

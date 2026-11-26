@@ -29,3 +29,51 @@ func TestLegend(t *testing.T) {
 	testutil.AssertNil(t, err)
 	testutil.AssertNotZero(t, buf.Len())
 }
+
+func TestLegendOHLCSwatch(t *testing.T) {
+	series := TimeOHLCSeries{
+		Name:        "Candles",
+		XValues:     ohlcTestTimes(),
+		OpenValues:  []float64{10, 14, 11, 11},
+		HighValues:  []float64{14, 15, 13, 12},
+		LowValues:   []float64{8, 10, 9, 10},
+		CloseValues: []float64{12, 11, 11, 10},
+	}
+
+	graph := Chart{
+		Series: []Series{series},
+	}
+	graph.Elements = []Renderable{Legend(&graph)}
+
+	// SVG so the up/down swatch colors are directly inspectable.
+	buf := bytes.NewBuffer([]byte{})
+	testutil.AssertNil(t, graph.Render(SVG, buf))
+	svg := buf.String()
+	testutil.AssertContains(t, svg, series.GetUpColor().String())
+	testutil.AssertContains(t, svg, series.GetDownColor().String())
+	testutil.AssertContains(t, svg, "Candles")
+}
+
+func TestLegendThinOHLCSwatch(t *testing.T) {
+	series := validOHLCSeries()
+	graph := Chart{Series: []Series{series}}
+	graph.Elements = []Renderable{LegendThin(&graph)}
+
+	buf := bytes.NewBuffer([]byte{})
+	testutil.AssertNil(t, graph.Render(SVG, buf))
+	svg := buf.String()
+	testutil.AssertContains(t, svg, series.GetUpColor().String())
+	testutil.AssertContains(t, svg, series.GetDownColor().String())
+}
+
+func TestLegendLeftOHLCSwatch(t *testing.T) {
+	series := validOHLCSeries()
+	graph := Chart{Series: []Series{series}}
+	graph.Elements = []Renderable{LegendLeft(&graph)}
+
+	buf := bytes.NewBuffer([]byte{})
+	testutil.AssertNil(t, graph.Render(SVG, buf))
+	svg := buf.String()
+	testutil.AssertContains(t, svg, series.GetUpColor().String())
+	testutil.AssertContains(t, svg, series.GetDownColor().String())
+}

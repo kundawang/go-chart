@@ -44,6 +44,20 @@ Stacked Bar:
 
 The code for this chart can be found in `examples/stacked_bar/main.go`.
 
+OHLC Candlesticks:
+
+A `TimeOHLCSeries` takes open, high, low and close values on an ordered
+time axis. Each period renders as a wick spanning the high-low range and a
+body spanning open-close; up candles (close > open) are green, down
+candles red and doji candles (close == open) black. Body widths scale with
+the spacing between neighboring points, so non-uniform time axes still
+read clearly, and the high-low extent is included when computing the axis
+range. Validation rejects inverted high/low values, open or close outside
+the high-low range, duplicate or unordered timestamps and non-finite
+values.
+
+The code for this chart can be found in `examples/ohlc_chart/main.go`.
+
 # Code Examples
 
 Actual chart configurations and examples can be found in the `./examples/` directory. They are simple CLI programs that write to `output.png` (they are also updated with `go generate`.
